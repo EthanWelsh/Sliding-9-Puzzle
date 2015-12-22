@@ -1,5 +1,17 @@
-import numpy as np
 import queue
+from enum import IntEnum
+
+import numpy as np
+
+
+class Direction(IntEnum):
+    NORTH = 0
+    SOUTH = 1
+    EAST = 2
+    WEST = 3
+
+
+DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 
 
 class Board:
@@ -15,21 +27,22 @@ class Board:
 
     @classmethod
     def from_file(cls, file_path):
-        return Board(board=np.loadtxt(file_path, skiprows=1, dtype=bytes).astype(str), goal=None)
+        return Board(board=np.loadtxt(file_path, skiprows=1, dtype=bytes).astype(np.uint8), goal=None)
 
     def children(self, goal):
-        blank_index = np.where(self.board == '0')
+        blank_index = np.where(self.board == 0)
         blank_index = (blank_index[0][0], blank_index[1][0])
 
         height, width = self.shape
         moves = []
 
-        for direction in ['n', 'e', 's', 'w']:
+        for direction in DIRECTIONS:
             r, c = self._adjust_index(blank_index, direction)
+
             if 0 <= r < height and 0 <= c < width:
                 copy = np.copy(self.board)
                 copy[blank_index] = copy[r, c]
-                copy[r, c] = '0'
+                copy[r, c] = 0
 
                 copy_board = Board(board=copy, goal=goal)
                 copy_board.path.extend(self.path + [direction])
@@ -41,23 +54,27 @@ class Board:
     def _adjust_index(position, direction):
         r, c = position
 
-        r -= direction.count('n')
-        r += direction.count('s')
-        c += direction.count('e')
-        c -= direction.count('w')
+        if direction == Direction.NORTH:
+            r -= 1
+        elif direction == Direction.SOUTH:
+            r += 1
+        elif direction == Direction.EAST:
+            c += 1
+        elif direction == Direction.WEST:
+            c -= 1
 
         return r, c
 
     @staticmethod
     def goal_board(size):
         height, width = size
-        goal = np.full((height, width), dtype=np.uint8, fill_value='0')
+        goal = np.full((height, width), dtype=np.uint8, fill_value=0)
 
         for r in range(height):
             for c in range(width):
-                goal[r, c] = str(c + r * width + 1)
+                goal[r, c] = c + r * width + 1
 
-        goal[height - 1, width - 1] = '0'
+        goal[height - 1, width - 1] = 0
 
         return goal
 
@@ -69,7 +86,7 @@ class Board:
             for c in range(width):
                 misplaced_index = (r, c)
                 if self.board[r, c] != template.board[r, c]:
-                    misplaced_index = np.where(self.board == str(template.board[r, c]))
+                    misplaced_index = np.where(self.board == template.board[r, c])
                     misplaced_index = (misplaced_index[0][0], misplaced_index[1][0])
 
                 miss_r, miss_c = misplaced_index
@@ -80,19 +97,26 @@ class Board:
     def is_goal(self):
         return self.heuristic == 0
 
+    def reverse_path(self):
+        return [{Direction.NORTH: Direction.SOUTH,
+                 Direction.EAST: Direction.WEST,
+                 Direction.SOUTH: Direction.NORTH,
+                 Direction.WEST: Direction.EAST}[direction]
+                for direction in self.path]
+
     def __str__(self):
         height, width = self.shape
 
         ret = ''
         for r in range(height):
             for c in range(width):
-                if self.board[r, c] == '0':
+                if self.board[r, c] == 0:
                     ret += '  ' + ' '
                 else:
-                    if int(self.board[r, c]) < 10:
+                    if self.board[r, c] < 10:
                         ret += ' '
 
-                    ret += self.board[r, c] + ' '
+                    ret += str(self.board[r, c]) + ' '
             ret += '\n'
         return ret
 
@@ -171,18 +195,15 @@ class Solver:
 
         return None
 
-    @staticmethod
-    def inverse(path):
-        return [dict(n='s', e='w', s='n', w='e')[direction] for direction in path]
-
 
 def main():
     s = Solver(file_path='puzzles/puzzle06.txt')
 
-    #up = s.up()
-    #print(s.inverse(up.path))
+    for direction in s.down().path:
+        print({Direction.NORTH: 'N', Direction.EAST: 'E', Direction.SOUTH: 'S', Direction.WEST: 'W'}[direction])
 
-    print(s.down().path)
+    # for direction in s.up().reverse_path():
+    #    print({Direction.NORTH:'N', Direction.EAST:'E', Direction.SOUTH:'S', Direction.WEST:'W'}[direction])
 
 
 if __name__ == '__main__':
