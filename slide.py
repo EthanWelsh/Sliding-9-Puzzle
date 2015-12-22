@@ -3,18 +3,21 @@ import queue
 
 
 class Board:
-    def __init__(self, board, forward=True):
+    def __init__(self, board, goal):
         self.board = board
         self.shape = self.board.shape
         self.path = []
 
-        self.heuristic = self.forward_manhattan() if forward else self.backward_manhattan()
+        if goal is not None:
+            self.heuristic = self.manhattan(goal)
+        else:
+            self.heuristic = 0
 
     @classmethod
     def from_file(cls, file_path):
-        return Board(np.loadtxt(file_path, skiprows=1, dtype=bytes).astype(str))
+        return Board(board=np.loadtxt(file_path, skiprows=1, dtype=bytes).astype(str), goal=None)
 
-    def children(self):
+    def children(self, goal):
         blank_index = np.where(self.board == '0')
         blank_index = (blank_index[0][0], blank_index[1][0])
 
@@ -28,7 +31,7 @@ class Board:
                 copy[blank_index] = copy[r, c]
                 copy[r, c] = '0'
 
-                copy_board = Board(copy)
+                copy_board = Board(board=copy, goal=goal)
                 copy_board.path.extend(self.path + [direction])
                 moves.append(copy_board)
 
@@ -48,7 +51,7 @@ class Board:
     @staticmethod
     def goal_board(size):
         height, width = size
-        goal = np.full((height, width), dtype=str, fill_value='0')
+        goal = np.full((height, width), dtype=np.uint8, fill_value='0')
 
         for r in range(height):
             for c in range(width):
@@ -58,7 +61,7 @@ class Board:
 
         return goal
 
-    def manhattan(self, template=None):
+    def manhattan(self, template):
         height, width = self.shape
         distance = 0
 
@@ -74,11 +77,8 @@ class Board:
 
         return distance
 
-    def forward_manhattan(self, goal):
-        return self.manhattan(goal)
-
-    def backward_manhattan(self, start):
-        return self.manhattan(start)
+    def is_goal(self):
+        return self.heuristic == 0
 
     def __str__(self):
         height, width = self.shape
@@ -96,19 +96,11 @@ class Board:
             ret += '\n'
         return ret
 
-    def __eq__(self, other):
-        return np.array_equal(self.board, other.board)
-
-    def __cmp__(self, other):
-        if self.heuristic < other.heuristic:
-            return -1
-        elif self.heuristic > other.heuristic:
-            return 1
-        else:
-            return 0
-
     def __lt__(self, other):
         return self.heuristic < other.heuristic
+
+    def __eq__(self, other):
+        return np.array_equal(self.board, other.board)
 
     def __hash__(self):
         return hash(str(self.board))
@@ -117,13 +109,11 @@ class Board:
 class Solver:
     def __init__(self, file_path):
         self.start = Board.from_file(file_path)
-        self.goal = self.start.goal_board(self.start.shape)
+        self.goal = Board(self.start.goal_board(self.start.shape), self.start)
+        self.start.heuristic = self.start.manhattan(self.goal)
 
         self.down_channel = queue.Queue()
         self.up_channel = queue.Queue()
-
-    def is_goal(self, board):
-        return np.array_equal(board.board, self.goal)
 
     def down(self):
         frontier = queue.PriorityQueue()
@@ -135,27 +125,27 @@ class Solver:
             current = frontier.get()
             explored.add(current)
 
-            if self.is_goal(current):
+            if current.is_goal():
                 return current
 
-            while not self.up_channel.empty():
-                up_boards.add(self.up_channel.get())
+            while not self.down_channel.empty():
+                up_boards.add(self.down_channel.get())
 
             if current in up_boards:
                 for possible_goal in up_boards:
                     if np.array_equal(possible_goal.board, current.board):
-                        return current, up_boards.remove(current)
+                        return current, possible_goal
 
-            for child in current.children():
+            for child in current.children(self.goal):
                 if child not in explored:
                     frontier.put(child)
-                    self.down_channel.put(child)
+                    self.up_channel.put(child)
 
         return None
 
     def up(self):
         frontier = queue.PriorityQueue()
-        frontier.put(self.start.goal_board(self.start.shape))
+        frontier.put(self.goal)
         down_boards = set()
         explored = set()
 
@@ -163,31 +153,36 @@ class Solver:
             current = frontier.get()
             explored.add(current)
 
-            if self.is_goal(current):
-                return True
+            if current.is_goal():
+                return current
 
-            while not self.down_channel.empty():
-                down_boards.add(self.down_channel.get())
+            while not self.up_channel.empty():
+                down_boards.add(self.up_channel.get())
 
             if current in down_boards:
                 for possible_goal in down_boards:
                     if np.array_equal(possible_goal.board, current.board):
                         return current, possible_goal
 
-            if current in self.down_channel:
-                return True
+            for child in current.children(self.start):
+                if child not in explored:
+                    frontier.put(child)
+                    self.down_channel.put(child)
 
-            for child in current.children():
-                self.up_channel.put(child)
-                frontier.put(child)
+        return None
 
-        return False
+    @staticmethod
+    def inverse(path):
+        return [dict(n='s', e='w', s='n', w='e')[direction] for direction in path]
 
 
 def main():
-    s = Solver(file_path='puzzles/puzzle03.txt')
-    s.up_channel.put(Board(s.start))
-    print(s.up())
+    s = Solver(file_path='puzzles/puzzle06.txt')
+
+    #up = s.up()
+    #print(s.inverse(up.path))
+
+    print(s.down().path)
 
 
 if __name__ == '__main__':
