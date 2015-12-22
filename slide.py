@@ -2,6 +2,9 @@ import queue
 from enum import IntEnum
 
 import numpy as np
+import threading
+
+import sys
 
 
 class Direction(IntEnum):
@@ -15,13 +18,16 @@ DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 
 
 class Board:
-    def __init__(self, board, goal):
+    def __init__(self, board, goal, path=None):
+        if path is None:
+            path = []
+
         self.board = board
         self.shape = self.board.shape
-        self.path = []
+        self.path = path
 
         if goal is not None:
-            self.heuristic = self.manhattan(goal)
+            self.heuristic = self.manhattan(goal) #+ len(self.path)
         else:
             self.heuristic = 0
 
@@ -44,8 +50,7 @@ class Board:
                 copy[blank_index] = copy[r, c]
                 copy[r, c] = 0
 
-                copy_board = Board(board=copy, goal=goal)
-                copy_board.path.extend(self.path + [direction])
+                copy_board = Board(board=copy, goal=goal, path=self.path + [direction])
                 moves.append(copy_board)
 
         return moves
@@ -121,7 +126,7 @@ class Board:
         return ret
 
     def __lt__(self, other):
-        return self.heuristic < other.heuristic
+        return self.heuristic + len(self.path) < other.heuristic + len(self.path)
 
     def __eq__(self, other):
         return np.array_equal(self.board, other.board)
@@ -150,15 +155,31 @@ class Solver:
             explored.add(current)
 
             if current.is_goal():
+                print('DOWN GOAL', current.path)
                 return current
 
             while not self.down_channel.empty():
                 up_boards.add(self.down_channel.get())
 
             if current in up_boards:
+
+                best_score = sys.maxsize
+                best_board = (None, None)
+
                 for possible_goal in up_boards:
                     if np.array_equal(possible_goal.board, current.board):
-                        return current, possible_goal
+                        total_path_cost = len(possible_goal.path) + len(current.path)
+
+                        if total_path_cost < best_score:
+                            best_score = total_path_cost
+                            best_board = (current, possible_goal)
+
+                ret = Board(self.goal, None)
+                up_board, down_board = best_board
+                ret.path = up_board.path + down_board.reverse_path()
+                print('DOWN JOIN', ret.path)
+
+                return ret
 
             for child in current.children(self.goal):
                 if child not in explored:
@@ -178,16 +199,31 @@ class Solver:
             explored.add(current)
 
             if current.is_goal():
+                print('UP GOAL', current.path)
                 return current
 
             while not self.up_channel.empty():
                 down_boards.add(self.up_channel.get())
 
             if current in down_boards:
+
+                best_score = sys.maxsize
+                best_board = (None, None)
+
                 for possible_goal in down_boards:
                     if np.array_equal(possible_goal.board, current.board):
-                        return current, possible_goal
+                        total_path_cost = len(possible_goal.path) + len(current.path)
 
+                        if total_path_cost < best_score:
+                            best_score = total_path_cost
+                            best_board = (possible_goal, current)
+
+                ret = Board(self.goal, None)
+                up_board, down_board = best_board
+                ret.path = up_board.path + down_board.reverse_path()
+                print('UP JOIN', ret.path)
+
+                return ret
             for child in current.children(self.start):
                 if child not in explored:
                     frontier.put(child)
@@ -199,11 +235,12 @@ class Solver:
 def main():
     s = Solver(file_path='puzzles/puzzle06.txt')
 
-    for direction in s.down().path:
-        print({Direction.NORTH: 'N', Direction.EAST: 'E', Direction.SOUTH: 'S', Direction.WEST: 'W'}[direction])
+    up = threading.Thread(target=s.up)
+    down = threading.Thread(target=s.down)
 
-    # for direction in s.up().reverse_path():
-    #    print({Direction.NORTH:'N', Direction.EAST:'E', Direction.SOUTH:'S', Direction.WEST:'W'}[direction])
+    up.start()
+    down.start()
+
 
 
 if __name__ == '__main__':
