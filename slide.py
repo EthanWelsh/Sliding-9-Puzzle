@@ -146,27 +146,26 @@ class Solver:
 
     def down(self):
         frontier = queue.PriorityQueue()
+
         frontier.put(self.start)
-        up_boards = set()
+        self.up_channel.put(self.start)
+
+        other_boards = set()
         explored = set()
 
         while not frontier.empty():
             current = frontier.get()
             explored.add(current)
 
-            if current.is_goal():
-                print('DOWN GOAL', current.path)
-                return current
-
             while not self.down_channel.empty():
-                up_boards.add(self.down_channel.get())
+                other_boards.add(self.down_channel.get())
 
-            if current in up_boards:
+            if current in other_boards:
 
                 best_score = sys.maxsize
                 best_board = (None, None)
 
-                for possible_goal in up_boards:
+                for possible_goal in other_boards:
                     if np.array_equal(possible_goal.board, current.board):
                         total_path_cost = len(possible_goal.path) + len(current.path)
 
@@ -177,7 +176,7 @@ class Solver:
                 ret = Board(self.goal, None)
                 up_board, down_board = best_board
                 ret.path = up_board.path + down_board.reverse_path()
-                print('DOWN JOIN', ret.path)
+                print('DOWN:', len(ret.path))
 
                 return ret
 
@@ -190,27 +189,26 @@ class Solver:
 
     def up(self):
         frontier = queue.PriorityQueue()
+
         frontier.put(self.goal)
-        down_boards = set()
+        self.down_channel.put(self.goal)
+
+        other_boards = set()
         explored = set()
 
         while not frontier.empty():
             current = frontier.get()
             explored.add(current)
 
-            if current.is_goal():
-                print('UP GOAL', current.path)
-                return current
-
             while not self.up_channel.empty():
-                down_boards.add(self.up_channel.get())
+                other_boards.add(self.up_channel.get())
 
-            if current in down_boards:
+            if current in other_boards:
 
                 best_score = sys.maxsize
                 best_board = (None, None)
 
-                for possible_goal in down_boards:
+                for possible_goal in other_boards:
                     if np.array_equal(possible_goal.board, current.board):
                         total_path_cost = len(possible_goal.path) + len(current.path)
 
@@ -221,9 +219,10 @@ class Solver:
                 ret = Board(self.goal, None)
                 up_board, down_board = best_board
                 ret.path = up_board.path + down_board.reverse_path()
-                print('UP JOIN', ret.path)
+                print('UP:', len(ret.path))
 
                 return ret
+
             for child in current.children(self.start):
                 if child not in explored:
                     frontier.put(child)
@@ -233,7 +232,8 @@ class Solver:
 
 
 def main():
-    s = Solver(file_path='puzzles/puzzle06.txt')
+
+    s = Solver(file_path='puzzles/puzzle09.txt')
 
     up = threading.Thread(target=s.up)
     down = threading.Thread(target=s.down)
@@ -241,6 +241,8 @@ def main():
     up.start()
     down.start()
 
+    down.join()
+    up.join()
 
 
 if __name__ == '__main__':
