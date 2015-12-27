@@ -169,7 +169,6 @@ class Solver:
 
             for child in current.children(self.goal):
                 if child not in explored:
-                    print(child.path)
                     frontier.put(child)
 
             while not self.down_channel.empty():
@@ -180,10 +179,6 @@ class Solver:
 
             if len(match_boards) > 0:
                 # TODO return the min path len match
-                print(list(match_boards)[0])
-                print(list(match_boards)[0].path)
-                print()
-
                 self.down_path = list(match_boards)[0].path
                 return self.down_path
 
@@ -219,7 +214,7 @@ class Solver:
 
 
 def main():
-    for i in range(4, 5):
+    for i in range(1, 45):
         s = Solver(file_path='puzzles/puzzle{0:02d}.txt'.format(i))
 
         up = threading.Thread(target=s.up)
@@ -231,10 +226,7 @@ def main():
         down.join()
         up.join()
 
-        print('{}: {}\t {}|{}'.format(i, len(s.up_path) + len(s.down_path),
-                                      ''.join([str(d) for d in s.down_path]),
-                                      ''.join([str(d) for d in s.up_path])))
-        print()
+        print('{}: {}'.format(i, len(s.up_path) + len(s.down_path)))
 
 
 if __name__ == '__main__':
