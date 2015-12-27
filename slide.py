@@ -103,9 +103,6 @@ class Board:
 
         return distance
 
-    def is_goal(self):
-        return self.heuristic == 0
-
     def reverse_path(self):
         return [{Direction.NORTH: Direction.SOUTH,
                  Direction.EAST: Direction.WEST,
@@ -145,9 +142,11 @@ class Solver:
         self.goal = Board(self.start.goal_board(self.start.shape), self.start)
         self.start.heuristic = self.start.manhattan(self.goal)
 
+        # Create channels for communicating between the boards
         self.down_channel = queue.Queue()
         self.up_channel = queue.Queue()
 
+        # Give each channel its end state
         self.down_channel.put(self.goal)
         self.up_channel.put(self.start)
 
@@ -158,24 +157,33 @@ class Solver:
         frontier = queue.PriorityQueue()
         frontier.put(self.start)
 
-        other_boards = set()
         explored = set()
+
+        # set for storing boards from the other thread that come in via the channel
+        other_boards = set()
 
         while not frontier.empty():
             current = frontier.get()
             explored.add(current)
+            self.up_channel.put(current)
 
             for child in current.children(self.goal):
                 if child not in explored:
+                    print(child.path)
                     frontier.put(child)
-                    self.up_channel.put(child)
 
             while not self.down_channel.empty():
                 other_boards.add(self.down_channel.get())
 
+            # ghetto set intersection
             match_boards = explored - (explored - other_boards)
 
             if len(match_boards) > 0:
+                # TODO return the min path len match
+                print(list(match_boards)[0])
+                print(list(match_boards)[0].path)
+                print()
+
                 self.down_path = list(match_boards)[0].path
                 return self.down_path
 
@@ -191,11 +199,11 @@ class Solver:
         while not frontier.empty():
             current = frontier.get()
             explored.add(current)
+            self.down_channel.put(current)
 
             for child in current.children(self.start):
                 if child not in explored:
                     frontier.put(child)
-                    self.down_channel.put(child)
 
             while not self.up_channel.empty():
                 other_boards.add(self.up_channel.get())
@@ -204,13 +212,14 @@ class Solver:
 
             if len(match_boards) > 0:
                 self.up_path = list(match_boards)[0].reverse_path()
+                self.up_path = list(reversed(self.up_path))
                 return self.up_path
 
         return None
 
 
 def main():
-    for i in range(10):
+    for i in range(4, 5):
         s = Solver(file_path='puzzles/puzzle{0:02d}.txt'.format(i))
 
         up = threading.Thread(target=s.up)
